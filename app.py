@@ -133,6 +133,13 @@ def admin_verificar():
     return render_template('admin_verificar.html')
 
 
+@app.route('/inventario')
+@login_required
+@admin_required
+def inventario():
+    return render_template('inventario.html')
+
+
 # ---------------- API: MIS DATOS ----------------
 
 @app.route('/api/mis-datos')
@@ -191,7 +198,6 @@ def registrar_venta():
         venta_id = venta_res.data[0]['id']
 
         for item in items:
-            # Detalle
             supabase.table('venta_detalle').insert({
                 'venta_id': venta_id,
                 'producto_id': item['id'],
@@ -199,7 +205,6 @@ def registrar_venta():
                 'precio_unitario': item['precio']
             }).execute()
 
-            # Stock de la tienda
             stock_res = supabase.table('stock_tiendas').select('stock').eq('producto_id', item['id']).eq('tienda_id', tienda_id).execute()
             if not stock_res.data:
                 return jsonify({'error': 'Producto sin stock en esta tienda'}), 400
@@ -209,7 +214,6 @@ def registrar_venta():
 
             supabase.table('stock_tiendas').update({'stock': nuevo_stock}).eq('producto_id', item['id']).eq('tienda_id', tienda_id).execute()
 
-            # Movimiento
             supabase.table('movimientos_inventario').insert({
                 'producto_id': item['id'],
                 'tienda_id': tienda_id,
@@ -380,6 +384,48 @@ def registrar_conteo():
         return jsonify({'error': str(e)}), 500
 
 
+@app.route('/api/caja/reabrir', methods=['POST'])
+@login_required
+@admin_required
+def reabrir_caja():
+    """Solo el admin puede reabrir una caja ya cerrada hoy"""
+    data = request.get_json()
+    tienda_id = int(data.get('tienda_id', 0))
+
+    if tienda_id not in (1, 2):
+        return jsonify({'error': 'Tienda inválida'}), 400
+
+    hoy = date.today().isoformat()
+
+    try:
+        caja = supabase.table('caja_sesiones').select('*').eq('fecha', hoy).eq('tienda_id', tienda_id).execute()
+        if not caja.data:
+            return jsonify({'error': 'No hay caja hoy en esa tienda'}), 404
+
+        caja_data = caja.data[0]
+
+        if not caja_data.get('conteo_registrado'):
+            return jsonify({'error': 'Esta caja no ha sido cerrada aún'}), 400
+
+        supabase.table('caja_sesiones').update({
+            'conteo_registrado': False,
+            'estado_cierre': 'abierta',
+            'conteo_vendedora': None,
+            'conteo_admin': None,
+            'diferencia_vendedora': None,
+            'diferencia_admin': None,
+            'cerrado_por': None,
+            'cerrado_en': None,
+            'revisado_por_admin': False
+        }).eq('id', caja_data['id']).execute()
+
+        auditoria('caja_reabierta', {'caja_id': caja_data['id'], 'tienda': tienda_id})
+        return jsonify({'mensaje': 'Caja reabierta correctamente'}), 200
+
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
 # ---------------- API: VERIFICACIÓN ADMIN ----------------
 
 @app.route('/api/admin/cierres-pendientes')
@@ -463,6 +509,209 @@ def verificar_cierre(caja_id):
         return jsonify({'error': str(e)}), 500
 
 
+# ---------------- API: INVENTARIO (ADMIN) ----------------
+
+@app.route('/api/admin/inventario')
+@login_required
+@admin_required
+def get_inventario():
+    try:
+        productos = supabase.table('productos').select('*').order('nombre').execute()
+        stocks = supabase.table('stock_tiendas').select('*').execute()
+
+        mapa = {}
+        for s in stocks.data:
+            mapa.setdefault(s['producto_id'], {})[s['tienda_id']] = {
+                'stock': s['stock'],
+                'stock_minimo': s.get('stock_minimo', 5),
+                'id': s['id']
+            }
+
+        resultado = []
+        for p in productos.data:
+            resultado.append({
+                'id': p['id'],
+                'codigo': p.get('codigo') or '',
+                'nombre': p['nombre'],
+                'categoria': p.get('categoria') or '',
+                'precio': float(p['precio']),
+                't1': mapa.get(p['id'], {}).get(1, {'stock': 0, 'stock_minimo': 5}),
+                't2': mapa.get(p['id'], {}).get(2, {'stock': 0, 'stock_minimo': 5})
+            })
+        return jsonify(resultado), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/admin/producto', methods=['POST'])
+@login_required
+@admin_required
+def crear_producto():
+    data = request.get_json()
+    codigo = (data.get('codigo') or '').strip() or None
+    nombre = (data.get('nombre') or '').strip()
+    categoria = (data.get('categoria') or '').strip()
+    precio = float(data.get('precio', 0))
+    stock_t1 = int(data.get('stock_t1', 0))
+    stock_t2 = int(data.get('stock_t2', 0))
+    minimo_t1 = int(data.get('minimo_t1', 5))
+    minimo_t2 = int(data.get('minimo_t2', 5))
+
+    if not nombre:
+        return jsonify({'error': 'El nombre es obligatorio'}), 400
+    if precio <= 0:
+        return jsonify({'error': 'El precio debe ser mayor a 0'}), 400
+
+    try:
+        if codigo:
+            existe = supabase.table('productos').select('id').eq('codigo', codigo).execute()
+            if existe.data:
+                return jsonify({'error': 'Ya existe un producto con ese código'}), 400
+
+        prod = supabase.table('productos').insert({
+            'codigo': codigo,
+            'nombre': nombre,
+            'categoria': categoria or None,
+            'precio': precio
+        }).execute()
+        prod_id = prod.data[0]['id']
+
+        supabase.table('stock_tiendas').insert([
+            {'producto_id': prod_id, 'tienda_id': 1, 'stock': stock_t1, 'stock_minimo': minimo_t1},
+            {'producto_id': prod_id, 'tienda_id': 2, 'stock': stock_t2, 'stock_minimo': minimo_t2}
+        ]).execute()
+
+        auditoria('producto_creado', {'producto_id': prod_id, 'nombre': nombre})
+        return jsonify({'mensaje': 'Producto creado', 'id': prod_id}), 201
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/admin/producto/<int:prod_id>', methods=['PUT'])
+@login_required
+@admin_required
+def editar_producto(prod_id):
+    data = request.get_json()
+    try:
+        update = {}
+        if 'codigo' in data:
+            update['codigo'] = (data['codigo'] or '').strip() or None
+        if 'nombre' in data:
+            update['nombre'] = data['nombre'].strip()
+        if 'categoria' in data:
+            update['categoria'] = (data['categoria'] or '').strip() or None
+        if 'precio' in data:
+            update['precio'] = float(data['precio'])
+
+        supabase.table('productos').update(update).eq('id', prod_id).execute()
+        auditoria('producto_editado', {'producto_id': prod_id, 'cambios': update})
+        return jsonify({'mensaje': 'Producto actualizado'}), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/admin/stock/entrada', methods=['POST'])
+@login_required
+@admin_required
+def entrada_stock():
+    data = request.get_json()
+    producto_id = int(data.get('producto_id', 0))
+    tienda_id = int(data.get('tienda_id', 0))
+    cantidad = int(data.get('cantidad', 0))
+    motivo = (data.get('motivo') or 'Compra').strip()
+
+    if cantidad <= 0:
+        return jsonify({'error': 'La cantidad debe ser mayor a 0'}), 400
+    if tienda_id not in (1, 2):
+        return jsonify({'error': 'Tienda inválida'}), 400
+
+    try:
+        stock = supabase.table('stock_tiendas').select('*').eq('producto_id', producto_id).eq('tienda_id', tienda_id).execute()
+        if not stock.data:
+            return jsonify({'error': 'Producto no tiene stock en esa tienda'}), 400
+
+        stock_actual = stock.data[0]['stock']
+        nuevo = stock_actual + cantidad
+
+        supabase.table('stock_tiendas').update({'stock': nuevo}).eq('producto_id', producto_id).eq('tienda_id', tienda_id).execute()
+
+        supabase.table('movimientos_inventario').insert({
+            'producto_id': producto_id,
+            'tienda_id': tienda_id,
+            'tipo': 'entrada',
+            'cantidad': cantidad,
+            'referencia_id': None
+        }).execute()
+
+        auditoria('entrada_stock', {'producto_id': producto_id, 'tienda': tienda_id, 'cantidad': cantidad, 'motivo': motivo})
+        return jsonify({'mensaje': 'Stock actualizado', 'nuevo_stock': nuevo}), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/admin/stock/ajuste', methods=['POST'])
+@login_required
+@admin_required
+def ajuste_stock():
+    data = request.get_json()
+    producto_id = int(data.get('producto_id', 0))
+    tienda_id = int(data.get('tienda_id', 0))
+    stock_real = int(data.get('stock_real', 0))
+    motivo = (data.get('motivo') or 'Ajuste').strip()
+
+    if tienda_id not in (1, 2):
+        return jsonify({'error': 'Tienda inválida'}), 400
+
+    try:
+        stock = supabase.table('stock_tiendas').select('stock').eq('producto_id', producto_id).eq('tienda_id', tienda_id).execute()
+        if not stock.data:
+            return jsonify({'error': 'Producto sin stock en esa tienda'}), 400
+
+        stock_anterior = stock.data[0]['stock']
+        diferencia = stock_real - stock_anterior
+
+        supabase.table('stock_tiendas').update({'stock': stock_real}).eq('producto_id', producto_id).eq('tienda_id', tienda_id).execute()
+
+        if diferencia != 0:
+            supabase.table('movimientos_inventario').insert({
+                'producto_id': producto_id,
+                'tienda_id': tienda_id,
+                'tipo': 'ajuste',
+                'cantidad': diferencia,
+                'referencia_id': None
+            }).execute()
+
+        auditoria('ajuste_stock', {
+            'producto_id': producto_id,
+            'tienda': tienda_id,
+            'stock_anterior': stock_anterior,
+            'stock_nuevo': stock_real,
+            'diferencia': diferencia,
+            'motivo': motivo
+        })
+
+        return jsonify({
+            'mensaje': 'Ajuste registrado',
+            'stock_anterior': stock_anterior,
+            'stock_nuevo': stock_real,
+            'diferencia': diferencia
+        }), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/admin/producto/<int:prod_id>', methods=['DELETE'])
+@login_required
+@admin_required
+def eliminar_producto(prod_id):
+    try:
+        supabase.table('productos').delete().eq('id', prod_id).execute()
+        auditoria('producto_eliminado', {'producto_id': prod_id})
+        return jsonify({'mensaje': 'Producto eliminado'}), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
 # ---------------- API: DASHBOARD ----------------
 
 @app.route('/api/dashboard')
@@ -515,221 +764,6 @@ def dashboard():
             'ventas_recientes': ventas.data[:10],
             'cierres_pendientes': len(pendientes.data)
         }), 200
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
-
-
-# ---------------- API: INVENTARIO (ADMIN) ----------------
-
-@app.route('/inventario')
-@login_required
-@admin_required
-def inventario():
-    return render_template('inventario.html')
-
-
-@app.route('/api/admin/inventario')
-@login_required
-@admin_required
-def get_inventario():
-    """Lista todos los productos con stock de ambas tiendas"""
-    try:
-        productos = supabase.table('productos').select('*').order('nombre').execute()
-        stocks = supabase.table('stock_tiendas').select('*').execute()
-
-        # Agrupar stock por producto
-        mapa = {}
-        for s in stocks.data:
-            mapa.setdefault(s['producto_id'], {})[s['tienda_id']] = {
-                'stock': s['stock'],
-                'stock_minimo': s.get('stock_minimo', 5),
-                'id': s['id']
-            }
-
-        resultado = []
-        for p in productos.data:
-            resultado.append({
-                'id': p['id'],
-                'codigo': p.get('codigo') or '',
-                'nombre': p['nombre'],
-                'categoria': p.get('categoria') or '',
-                'precio': float(p['precio']),
-                't1': mapa.get(p['id'], {}).get(1, {'stock': 0, 'stock_minimo': 5}),
-                't2': mapa.get(p['id'], {}).get(2, {'stock': 0, 'stock_minimo': 5})
-            })
-        return jsonify(resultado), 200
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
-
-
-@app.route('/api/admin/producto', methods=['POST'])
-@login_required
-@admin_required
-def crear_producto():
-    data = request.get_json()
-    codigo = (data.get('codigo') or '').strip() or None
-    nombre = (data.get('nombre') or '').strip()
-    categoria = (data.get('categoria') or '').strip()
-    precio = float(data.get('precio', 0))
-    stock_t1 = int(data.get('stock_t1', 0))
-    stock_t2 = int(data.get('stock_t2', 0))
-    minimo_t1 = int(data.get('minimo_t1', 5))
-    minimo_t2 = int(data.get('minimo_t2', 5))
-
-    if not nombre:
-        return jsonify({'error': 'El nombre es obligatorio'}), 400
-    if precio <= 0:
-        return jsonify({'error': 'El precio debe ser mayor a 0'}), 400
-
-    try:
-        # Verificar código duplicado
-        if codigo:
-            existe = supabase.table('productos').select('id').eq('codigo', codigo).execute()
-            if existe.data:
-                return jsonify({'error': 'Ya existe un producto con ese código'}), 400
-
-        prod = supabase.table('productos').insert({
-            'codigo': codigo,
-            'nombre': nombre,
-            'categoria': categoria or None,
-            'precio': precio
-        }).execute()
-        prod_id = prod.data[0]['id']
-
-        # Stock en ambas tiendas
-        supabase.table('stock_tiendas').insert([
-            {'producto_id': prod_id, 'tienda_id': 1, 'stock': stock_t1, 'stock_minimo': minimo_t1},
-            {'producto_id': prod_id, 'tienda_id': 2, 'stock': stock_t2, 'stock_minimo': minimo_t2}
-        ]).execute()
-
-        auditoria('producto_creado', {'producto_id': prod_id, 'nombre': nombre})
-        return jsonify({'mensaje': 'Producto creado', 'id': prod_id}), 201
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
-
-
-@app.route('/api/admin/producto/<int:prod_id>', methods=['PUT'])
-@login_required
-@admin_required
-def editar_producto(prod_id):
-    data = request.get_json()
-    try:
-        update = {}
-        if 'codigo' in data:
-            update['codigo'] = (data['codigo'] or '').strip() or None
-        if 'nombre' in data:
-            update['nombre'] = data['nombre'].strip()
-        if 'categoria' in data:
-            update['categoria'] = (data['categoria'] or '').strip() or None
-        if 'precio' in data:
-            update['precio'] = float(data['precio'])
-
-        supabase.table('productos').update(update).eq('id', prod_id).execute()
-        auditoria('producto_editado', {'producto_id': prod_id, 'cambios': update})
-        return jsonify({'mensaje': 'Producto actualizado'}), 200
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
-
-
-@app.route('/api/admin/stock/entrada', methods=['POST'])
-@login_required
-@admin_required
-def entrada_stock():
-    """Agrega unidades al stock de una tienda (compra/entrada)"""
-    data = request.get_json()
-    producto_id = int(data.get('producto_id', 0))
-    tienda_id = int(data.get('tienda_id', 0))
-    cantidad = int(data.get('cantidad', 0))
-    motivo = (data.get('motivo') or 'Compra').strip()
-
-    if cantidad <= 0:
-        return jsonify({'error': 'La cantidad debe ser mayor a 0'}), 400
-    if tienda_id not in (1, 2):
-        return jsonify({'error': 'Tienda inválida'}), 400
-
-    try:
-        stock = supabase.table('stock_tiendas').select('*').eq('producto_id', producto_id).eq('tienda_id', tienda_id).execute()
-        if not stock.data:
-            return jsonify({'error': 'Producto no tiene stock en esa tienda'}), 400
-
-        stock_actual = stock.data[0]['stock']
-        nuevo = stock_actual + cantidad
-
-        supabase.table('stock_tiendas').update({'stock': nuevo}).eq('producto_id', producto_id).eq('tienda_id', tienda_id).execute()
-
-        supabase.table('movimientos_inventario').insert({
-            'producto_id': producto_id,
-            'tienda_id': tienda_id,
-            'tipo': 'entrada',
-            'cantidad': cantidad,
-            'referencia_id': None
-        }).execute()
-
-        auditoria('entrada_stock', {'producto_id': producto_id, 'tienda': tienda_id, 'cantidad': cantidad, 'motivo': motivo})
-        return jsonify({'mensaje': 'Stock actualizado', 'nuevo_stock': nuevo}), 200
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
-
-
-@app.route('/api/admin/stock/ajuste', methods=['POST'])
-@login_required
-@admin_required
-def ajuste_stock():
-    """Ajusta el stock de una tienda (para correcciones, mermas, etc.)"""
-    data = request.get_json()
-    producto_id = int(data.get('producto_id', 0))
-    tienda_id = int(data.get('tienda_id', 0))
-    stock_real = int(data.get('stock_real', 0))
-    motivo = (data.get('motivo') or 'Ajuste').strip()
-
-    if tienda_id not in (1, 2):
-        return jsonify({'error': 'Tienda inválida'}), 400
-
-    try:
-        stock = supabase.table('stock_tiendas').select('stock').eq('producto_id', producto_id).eq('tienda_id', tienda_id).execute()
-        if not stock.data:
-            return jsonify({'error': 'Producto sin stock en esa tienda'}), 400
-
-        stock_anterior = stock.data[0]['stock']
-        diferencia = stock_real - stock_anterior
-
-        supabase.table('stock_tiendas').update({'stock': stock_real}).eq('producto_id', producto_id).eq('tienda_id', tienda_id).execute()
-
-        if diferencia != 0:
-            supabase.table('movimientos_inventario').insert({
-                'producto_id': producto_id,
-                'tienda_id': tienda_id,
-                'tipo': 'ajuste',
-                'cantidad': diferencia,
-                'referencia_id': None
-            }).execute()
-
-        auditoria('ajuste_stock', {
-            'producto_id': producto_id,
-            'tienda': tienda_id,
-            'stock_anterior': stock_anterior,
-            'stock_nuevo': stock_real,
-            'diferencia': diferencia,
-            'motivo': motivo
-        })
-
-        return jsonify({
-            'mensaje': 'Ajuste registrado',
-            'stock_anterior': stock_anterior,
-            'stock_nuevo': stock_real,
-            'diferencia': diferencia
-        }), 200
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
-
-@app.route('/api/admin/producto/<int:prod_id>', methods=['DELETE'])
-@login_required
-@admin_required
-def eliminar_producto(prod_id):
-    try:
-        supabase.table('productos').delete().eq('id', prod_id).execute()
-        auditoria('producto_eliminado', {'producto_id': prod_id})
-        return jsonify({'mensaje': 'Producto eliminado'}), 200
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 

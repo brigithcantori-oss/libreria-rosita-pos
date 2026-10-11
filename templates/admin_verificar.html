@@ -11,10 +11,13 @@
         h1 { color: #333; margin-bottom: 20px; font-size: 24px; }
         a.volver { color: #0070c0; text-decoration: none; font-weight: bold; font-size: 14px; display: inline-block; margin-bottom: 16px; }
         .card { background: white; padding: 24px; border-radius: 14px; box-shadow: 0 2px 12px rgba(0,0,0,0.06); margin-bottom: 20px; }
-        .cierre { padding: 20px; background: #fff8e1; border-left: 5px solid #f57c00; border-radius: 10px; margin-bottom: 16px; cursor: pointer; }
-        .cierre:hover { background: #ffecb3; }
+        .cierre { padding: 20px; background: #fff8e1; border-left: 5px solid #f57c00; border-radius: 10px; margin-bottom: 16px; display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+        .cierre-info { flex: 1; cursor: pointer; }
+        .cierre-info:hover { opacity: 0.85; }
         .cierre-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
         .cierre-detalle { color: #666; font-size: 14px; }
+        .btn-reabrir { background: #f57c00; color: white; border: none; padding: 10px 14px; border-radius: 8px; font-weight: bold; cursor: pointer; white-space: nowrap; }
+        .btn-reabrir:hover { background: #e65100; }
         .modal-bg { position: fixed; inset: 0; background: rgba(0,0,0,0.5); display: none; align-items: center; justify-content: center; padding: 20px; z-index: 100; }
         .modal-bg.activo { display: flex; }
         .modal { background: white; padding: 28px; border-radius: 14px; max-width: 500px; width: 100%; }
@@ -64,13 +67,16 @@
                 }
                 lista.innerHTML = data.map(c => {
                     const fecha = new Date(c.fecha).toLocaleDateString('es-PE');
-                    return '<div class="cierre" onclick="abrirModal(' + c.id + ')">' +
-                        '<div class="cierre-header">' +
-                        '<b>' + (c.tiendas?.nombre || 'Tienda') + ' — ' + fecha + '</b>' +
-                        '<span class="badge-dif ' + (Math.abs(c.diferencia_vendedora || 0) < 0.01 ? 'ok' : 'bad') + '">' +
-                        (Math.abs(c.diferencia_vendedora || 0) < 0.01 ? 'Cuadra' : 'Diferencia: S/ ' + (c.diferencia_vendedora || 0).toFixed(2)) +
+                    const dif = c.diferencia_vendedora || 0;
+                    return '<div class="cierre">' +
+                        '<div class="cierre-info" onclick="abrirModal(' + c.id + ')">' +
+                        '<div class="cierre-header"><b>' + (c.tiendas?.nombre || 'Tienda') + ' — ' + fecha + '</b>' +
+                        '<span class="badge-dif ' + (Math.abs(dif) < 0.01 ? 'ok' : 'bad') + '">' +
+                        (Math.abs(dif) < 0.01 ? 'Cuadra' : 'Diferencia: S/ ' + dif.toFixed(2)) +
                         '</span></div>' +
-                        '<div class="cierre-detalle">Conteo de la vendedora: S/ ' + (c.conteo_vendedora || 0).toFixed(2) + ' | Abrió con: S/ ' + (c.efectivo_inicial || 0).toFixed(2) + '</div>' +
+                        '<div class="cierre-detalle">Conteo vendedora: S/ ' + (c.conteo_vendedora || 0).toFixed(2) + ' | Abrió con: S/ ' + (c.efectivo_inicial || 0).toFixed(2) + '</div>' +
+                        '</div>' +
+                        '<button class="btn-reabrir" onclick="reabrirCaja(' + c.tienda_id + ', \'' + (c.tiendas?.nombre || 'Tienda') + '\')">↺ Reabrir</button>' +
                         '</div>';
                 }).join('');
             });
@@ -119,6 +125,20 @@
                 else msg += '🚨 ATENCIÓN: Hay diferencias. Investigar.';
                 alert(msg);
                 cerrarModal();
+                cargarPendientes();
+            });
+        }
+
+        function reabrirCaja(tiendaId, tiendaNombre) {
+            if (!confirm('¿Reabrir la caja de ' + tiendaNombre + '?\n\nEsto borrará el conteo enviado y volverá al estado abierto.')) return;
+
+            fetch('/api/caja/reabrir', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ tienda_id: tiendaId })
+            }).then(r => r.json()).then(data => {
+                if (data.error) return alert(data.error);
+                alert('✅ Caja reabierta. La vendedora puede volver a contar y registrar.');
                 cargarPendientes();
             });
         }
