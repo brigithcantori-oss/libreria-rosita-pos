@@ -1,0 +1,464 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Inventario - Librería Rosita</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Segoe UI', Arial, sans-serif; }
+        body { background: #f0f2f5; padding: 20px; }
+        .container { max-width: 1300px; margin: 0 auto; }
+        .top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 10px; }
+        h1 { color: #333; font-size: 24px; }
+        a.volver { color: #0070c0; text-decoration: none; font-weight: bold; font-size: 14px; }
+        .acciones { display: flex; gap: 10px; flex-wrap: wrap; }
+        .btn { padding: 10px 18px; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; font-size: 14px; }
+        .btn-primary { background: #0070c0; color: white; }
+        .btn-primary:hover { background: #005a9e; }
+        .btn-success { background: #2e7d32; color: white; }
+        .btn-danger { background: #d32f2f; color: white; }
+        .btn-secondary { background: #eee; color: #333; }
+        .card { background: white; padding: 20px; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.06); margin-bottom: 16px; }
+        .buscador { width: 100%; padding: 12px; font-size: 15px; border: 2px solid #ddd; border-radius: 8px; margin-bottom: 16px; }
+
+        table { width: 100%; border-collapse: collapse; }
+        th, td { padding: 12px 10px; text-align: left; border-bottom: 1px solid #f0f0f0; font-size: 14px; }
+        th { background: #fafafa; color: #555; font-weight: 600; font-size: 13px; text-transform: uppercase; }
+        tr:hover { background: #f9f9f9; }
+        .stock-cell { font-weight: bold; }
+        .stock-ok { color: #2e7d32; }
+        .stock-low { color: #f57c00; }
+        .stock-critical { color: #d32f2f; }
+        .acciones-tabla { display: flex; gap: 6px; }
+        .btn-mini { padding: 6px 10px; font-size: 12px; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; }
+        .btn-mini.verde { background: #2e7d32; color: white; }
+        .btn-mini.azul { background: #0070c0; color: white; }
+        .btn-mini.rojo { background: #d32f2f; color: white; }
+        .btn-mini:hover { opacity: 0.9; }
+
+        .modal-bg { position: fixed; inset: 0; background: rgba(0,0,0,0.5); display: none; align-items: center; justify-content: center; padding: 20px; z-index: 100; overflow-y: auto; }
+        .modal-bg.activo { display: flex; }
+        .modal { background: white; padding: 28px; border-radius: 14px; max-width: 550px; width: 100%; max-height: 90vh; overflow-y: auto; }
+        .modal h3 { margin-bottom: 20px; color: #333; }
+        .form-group { margin-bottom: 16px; }
+        .form-group label { display: block; color: #555; font-size: 13px; font-weight: 600; margin-bottom: 6px; }
+        .form-group input, .form-group select {
+            width: 100%; padding: 11px; font-size: 15px;
+            border: 2px solid #e0e0e0; border-radius: 8px;
+        }
+        .form-group input:focus, .form-group select:focus { outline: none; border-color: #0070c0; }
+        .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+        .modal-btns { display: flex; gap: 8px; margin-top: 20px; }
+        .modal-btns button { flex: 1; padding: 12px; font-size: 15px; font-weight: bold; border: none; border-radius: 8px; cursor: pointer; }
+        .btn-cancelar { background: #eee; color: #333; }
+        .notif { position: fixed; top: 20px; right: 20px; padding: 14px 22px; border-radius: 8px; font-weight: bold; display: none; z-index: 200; color: white; box-shadow: 0 4px 12px rgba(0,0,0,0.2); }
+        .notif.ok { background: #2e7d32; }
+        .notif.error { background: #d32f2f; }
+        .seccion-titulo { font-size: 12px; color: #888; text-transform: uppercase; font-weight: 700; margin-top: 12px; margin-bottom: 8px; }
+        .resumen { display: flex; gap: 16px; flex-wrap: wrap; margin-bottom: 16px; }
+        .resumen .stat { background: #f8f9fa; padding: 12px 16px; border-radius: 10px; border-left: 4px solid #0070c0; }
+        .resumen .stat .l { font-size: 12px; color: #666; }
+        .resumen .stat .v { font-size: 20px; font-weight: bold; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="top">
+            <div>
+                <a href="/" class="volver">← Volver al panel</a>
+                <h1>📦 Inventario</h1>
+            </div>
+            <div class="acciones">
+                <button class="btn btn-primary" onclick="abrirNuevoProducto()">+ Nuevo producto</button>
+            </div>
+        </div>
+
+        <div class="resumen" id="resumen"></div>
+
+        <div class="card">
+            <input type="text" class="buscador" id="buscador" placeholder="🔍 Buscar por nombre, código o categoría..." oninput="renderizar()">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Código</th>
+                        <th>Producto</th>
+                        <th>Categoría</th>
+                        <th>Precio</th>
+                        <th>Tienda 1</th>
+                        <th>Tienda 2</th>
+                        <th>Acciones</th>
+                    </tr>
+                </thead>
+                <tbody id="tabla"></tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Modal nuevo producto -->
+    <div class="modal-bg" id="modal-nuevo">
+        <div class="modal">
+            <h3>Nuevo producto</h3>
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Código (opcional)</label>
+                    <input type="text" id="n-codigo" placeholder="Ej: ROS-004">
+                </div>
+                <div class="form-group">
+                    <label>Categoría</label>
+                    <input type="text" id="n-categoria" placeholder="Ej: Escolar">
+                </div>
+            </div>
+            <div class="form-group">
+                <label>Nombre del producto *</label>
+                <input type="text" id="n-nombre" placeholder="Ej: Regla 30cm">
+            </div>
+            <div class="form-group">
+                <label>Precio de venta (S/) *</label>
+                <input type="number" id="n-precio" step="0.01" min="0" placeholder="0.00">
+            </div>
+            <div class="seccion-titulo">Stock inicial — Tienda 1</div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Unidades</label>
+                    <input type="number" id="n-stock-t1" min="0" value="0">
+                </div>
+                <div class="form-group">
+                    <label>Stock mínimo</label>
+                    <input type="number" id="n-min-t1" min="0" value="5">
+                </div>
+            </div>
+            <div class="seccion-titulo">Stock inicial — Tienda 2</div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Unidades</label>
+                    <input type="number" id="n-stock-t2" min="0" value="0">
+                </div>
+                <div class="form-group">
+                    <label>Stock mínimo</label>
+                    <input type="number" id="n-min-t2" min="0" value="5">
+                </div>
+            </div>
+            <div class="modal-btns">
+                <button class="btn-cancelar" onclick="cerrarModal('modal-nuevo')">Cancelar</button>
+                <button class="btn-primary" onclick="guardarNuevo()">Crear producto</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal editar -->
+    <div class="modal-bg" id="modal-editar">
+        <div class="modal">
+            <h3>Editar producto</h3>
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Código</label>
+                    <input type="text" id="e-codigo">
+                </div>
+                <div class="form-group">
+                    <label>Categoría</label>
+                    <input type="text" id="e-categoria">
+                </div>
+            </div>
+            <div class="form-group">
+                <label>Nombre</label>
+                <input type="text" id="e-nombre">
+            </div>
+            <div class="form-group">
+                <label>Precio (S/)</label>
+                <input type="number" id="e-precio" step="0.01" min="0">
+            </div>
+            <div class="modal-btns">
+                <button class="btn-cancelar" onclick="cerrarModal('modal-editar')">Cancelar</button>
+                <button class="btn-primary" onclick="guardarEdicion()">Guardar cambios</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal entrada de stock -->
+    <div class="modal-bg" id="modal-entrada">
+        <div class="modal">
+            <h3>Agregar stock</h3>
+            <p style="color:#666; font-size:14px; margin-bottom:16px;" id="entrada-info"></p>
+            <div class="form-group">
+                <label>Tienda</label>
+                <select id="ent-tienda">
+                    <option value="1">Tienda 1</option>
+                    <option value="2">Tienda 2</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>Cantidad a agregar</label>
+                <input type="number" id="ent-cantidad" min="1" value="1">
+            </div>
+            <div class="form-group">
+                <label>Motivo (opcional)</label>
+                <input type="text" id="ent-motivo" placeholder="Ej: Compra a proveedor">
+            </div>
+            <div class="modal-btns">
+                <button class="btn-cancelar" onclick="cerrarModal('modal-entrada')">Cancelar</button>
+                <button class="btn-success" onclick="guardarEntrada()">Agregar stock</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal ajuste -->
+    <div class="modal-bg" id="modal-ajuste">
+        <div class="modal">
+            <h3>Ajustar stock (inventario físico)</h3>
+            <p style="color:#666; font-size:14px; margin-bottom:16px;" id="ajuste-info"></p>
+            <div class="form-group">
+                <label>Tienda</label>
+                <select id="aj-tienda">
+                    <option value="1">Tienda 1</option>
+                    <option value="2">Tienda 2</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>Stock real contado</label>
+                <input type="number" id="aj-stock" min="0" value="0">
+            </div>
+            <div class="form-group">
+                <label>Motivo</label>
+                <input type="text" id="aj-motivo" placeholder="Ej: Conteo físico mensual">
+            </div>
+            <div class="modal-btns">
+                <button class="btn-cancelar" onclick="cerrarModal('modal-ajuste')">Cancelar</button>
+                <button class="btn-primary" onclick="guardarAjuste()">Ajustar stock</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="notif" id="notif"></div>
+
+    <script>
+        let productos = [];
+        let productoEditando = null;
+        let productoEntrada = null;
+        let productoAjuste = null;
+
+        function notificar(msg, tipo) {
+            const n = document.getElementById('notif');
+            n.textContent = msg;
+            n.className = 'notif ' + tipo;
+            n.style.display = 'block';
+            setTimeout(() => { n.style.display = 'none'; }, 3000);
+        }
+
+        function abrirModal(id) { document.getElementById(id).classList.add('activo'); }
+        function cerrarModal(id) { document.getElementById(id).classList.remove('activo'); }
+
+        function cargar() {
+            fetch('/api/admin/inventario').then(r => r.json()).then(data => {
+                if (data.error) return notificar(data.error, 'error');
+                productos = data;
+                renderizar();
+                actualizarResumen();
+            });
+        }
+
+        function actualizarResumen() {
+            const total = productos.length;
+            const bajoT1 = productos.filter(p => p.t1.stock <= p.t1.stock_minimo).length;
+            const bajoT2 = productos.filter(p => p.t2.stock <= p.t2.stock_minimo).length;
+            const totalUnidades = productos.reduce((s, p) => s + p.t1.stock + p.t2.stock, 0);
+
+            document.getElementById('resumen').innerHTML =
+                '<div class="stat"><div class="l">Productos</div><div class="v">' + total + '</div></div>' +
+                '<div class="stat" style="border-left-color:#0070c0;"><div class="l">Unidades totales</div><div class="v">' + totalUnidades + '</div></div>' +
+                '<div class="stat" style="border-left-color:#f57c00;"><div class="l">Stock bajo T1</div><div class="v">' + bajoT1 + '</div></div>' +
+                '<div class="stat" style="border-left-color:#f57c00;"><div class="l">Stock bajo T2</div><div class="v">' + bajoT2 + '</div></div>';
+        }
+
+        function colorStock(stock, minimo) {
+            if (stock <= 0) return 'stock-critical';
+            if (stock <= minimo) return 'stock-low';
+            return 'stock-ok';
+        }
+
+        function renderizar() {
+            const filtro = document.getElementById('buscador').value.toLowerCase();
+            const filtrados = productos.filter(p =>
+                p.nombre.toLowerCase().includes(filtro) ||
+                (p.codigo && p.codigo.toLowerCase().includes(filtro)) ||
+                (p.categoria && p.categoria.toLowerCase().includes(filtro))
+            );
+
+            const tbody = document.getElementById('tabla');
+            if (!filtrados.length) {
+                tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; padding:30px; color:#888;">No hay productos. Haz clic en "+ Nuevo producto".</td></tr>';
+                return;
+            }
+
+            tbody.innerHTML = filtrados.map(p => {
+                return '<tr>' +
+                    '<td>' + (p.codigo || '—') + '</td>' +
+                    '<td><b>' + p.nombre + '</b></td>' +
+                    '<td>' + (p.categoria || '—') + '</td>' +
+                    '<td>S/ ' + p.precio.toFixed(2) + '</td>' +
+                    '<td class="stock-cell ' + colorStock(p.t1.stock, p.t1.stock_minimo) + '">' + p.t1.stock + '</td>' +
+                    '<td class="stock-cell ' + colorStock(p.t2.stock, p.t2.stock_minimo) + '">' + p.t2.stock + '</td>' +
+                    '<td><div class="acciones-tabla">' +
+                        '<button class="btn-mini verde" onclick="abrirEntrada(' + p.id + ')">+ Stock</button>' +
+                        '<button class="btn-mini azul" onclick="abrirEditar(' + p.id + ')">Editar</button>' +
+                        '<button class="btn-mini" style="background:#f57c00; color:white;" onclick="abrirAjuste(' + p.id + ')">Ajustar</button>' +
+                        '<button class="btn-mini rojo" onclick="eliminarProducto(' + p.id + ')">×</button>' +
+                    '</div></td>' +
+                    '</tr>';
+            }).join('');
+        }
+
+        // NUEVO PRODUCTO
+        function abrirNuevoProducto() {
+            ['n-codigo','n-nombre','n-categoria','n-precio'].forEach(id => document.getElementById(id).value = '');
+            document.getElementById('n-stock-t1').value = 0;
+            document.getElementById('n-stock-t2').value = 0;
+            document.getElementById('n-min-t1').value = 5;
+            document.getElementById('n-min-t2').value = 5;
+            abrirModal('modal-nuevo');
+        }
+
+        function guardarNuevo() {
+            const data = {
+                codigo: document.getElementById('n-codigo').value,
+                nombre: document.getElementById('n-nombre').value,
+                categoria: document.getElementById('n-categoria').value,
+                precio: parseFloat(document.getElementById('n-precio').value),
+                stock_t1: parseInt(document.getElementById('n-stock-t1').value) || 0,
+                stock_t2: parseInt(document.getElementById('n-stock-t2').value) || 0,
+                minimo_t1: parseInt(document.getElementById('n-min-t1').value) || 5,
+                minimo_t2: parseInt(document.getElementById('n-min-t2').value) || 5
+            };
+
+            if (!data.nombre) return notificar('Falta el nombre', 'error');
+            if (isNaN(data.precio) || data.precio <= 0) return notificar('Precio inválido', 'error');
+
+            fetch('/api/admin/producto', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(data)
+            }).then(r => r.json()).then(res => {
+                if (res.error) return notificar(res.error, 'error');
+                notificar('Producto creado', 'ok');
+                cerrarModal('modal-nuevo');
+                cargar();
+            });
+        }
+
+        // EDITAR
+        function abrirEditar(id) {
+            const p = productos.find(x => x.id === id);
+            if (!p) return;
+            productoEditando = p;
+            document.getElementById('e-codigo').value = p.codigo || '';
+            document.getElementById('e-nombre').value = p.nombre;
+            document.getElementById('e-categoria').value = p.categoria || '';
+            document.getElementById('e-precio').value = p.precio;
+            abrirModal('modal-editar');
+        }
+
+        function guardarEdicion() {
+            const data = {
+                codigo: document.getElementById('e-codigo').value,
+                nombre: document.getElementById('e-nombre').value,
+                categoria: document.getElementById('e-categoria').value,
+                precio: parseFloat(document.getElementById('e-precio').value)
+            };
+            if (!data.nombre) return notificar('Falta el nombre', 'error');
+
+            fetch('/api/admin/producto/' + productoEditando.id, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(data)
+            }).then(r => r.json()).then(res => {
+                if (res.error) return notificar(res.error, 'error');
+                notificar('Producto actualizado', 'ok');
+                cerrarModal('modal-editar');
+                cargar();
+            });
+        }
+
+        // ENTRADA DE STOCK
+        function abrirEntrada(id) {
+            const p = productos.find(x => x.id === id);
+            if (!p) return;
+            productoEntrada = p;
+            document.getElementById('entrada-info').innerHTML = '<b>' + p.nombre + '</b>';
+            document.getElementById('ent-cantidad').value = 1;
+            document.getElementById('ent-motivo').value = 'Compra a proveedor';
+            abrirModal('modal-entrada');
+        }
+
+        function guardarEntrada() {
+            const data = {
+                producto_id: productoEntrada.id,
+                tienda_id: parseInt(document.getElementById('ent-tienda').value),
+                cantidad: parseInt(document.getElementById('ent-cantidad').value),
+                motivo: document.getElementById('ent-motivo').value
+            };
+            if (data.cantidad <= 0) return notificar('Cantidad inválida', 'error');
+
+            fetch('/api/admin/stock/entrada', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(data)
+            }).then(r => r.json()).then(res => {
+                if (res.error) return notificar(res.error, 'error');
+                notificar('Stock actualizado', 'ok');
+                cerrarModal('modal-entrada');
+                cargar();
+            });
+        }
+
+        // AJUSTE
+        function abrirAjuste(id) {
+            const p = productos.find(x => x.id === id);
+            if (!p) return;
+            productoAjuste = p;
+            document.getElementById('ajuste-info').innerHTML = '<b>' + p.nombre + '</b><br><span style="font-size:13px;">Stock actual: T1 = ' + p.t1.stock + ' | T2 = ' + p.t2.stock + '</span>';
+            document.getElementById('aj-stock').value = p.t1.stock;
+            document.getElementById('aj-motivo').value = 'Conteo físico';
+            abrirModal('modal-ajuste');
+        }
+
+        function guardarAjuste() {
+            const data = {
+                producto_id: productoAjuste.id,
+                tienda_id: parseInt(document.getElementById('aj-tienda').value),
+                stock_real: parseInt(document.getElementById('aj-stock').value),
+                motivo: document.getElementById('aj-motivo').value
+            };
+            if (data.stock_real < 0) return notificar('Stock inválido', 'error');
+
+            fetch('/api/admin/stock/ajuste', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(data)
+            }).then(r => r.json()).then(res => {
+                if (res.error) return notificar(res.error, 'error');
+                let msg = 'Ajustado. ';
+                if (res.diferencia < 0) msg += 'Faltan ' + Math.abs(res.diferencia) + ' unidades.';
+                else if (res.diferencia > 0) msg += 'Sobraban ' + res.diferencia + ' unidades.';
+                else msg += 'Sin cambios.';
+                notificar(msg, 'ok');
+                cerrarModal('modal-ajuste');
+                cargar();
+            });
+        }
+
+        function eliminarProducto(id) {
+            const p = productos.find(x => x.id === id);
+            if (!p) return;
+            if (!confirm('¿Eliminar "' + p.nombre + '"? Esta acción no se puede deshacer.')) return;
+            fetch('/api/admin/producto/' + id, { method: 'DELETE' })
+                .then(r => r.json())
+                .then(res => {
+                    if (res.error) return notificar(res.error, 'error');
+                    notificar('Producto eliminado', 'ok');
+                    cargar();
+                });
+        }
+
+        cargar();
+    </script>
+</body>
+</html>

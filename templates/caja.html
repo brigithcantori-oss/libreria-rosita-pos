@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Caja - Librería Rosita</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Segoe UI', Arial, sans-serif; }
+        body { background: #f0f2f5; padding: 20px; min-height: 100vh; }
+        .container { max-width: 700px; margin: 0 auto; }
+        .top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; flex-wrap: wrap; gap: 10px; }
+        h1 { color: #333; font-size: 22px; }
+        .badge-tienda { background: #0070c0; color: white; padding: 4px 12px; border-radius: 20px; font-size: 12px; font-weight: bold; }
+        .logout { color: #d32f2f; text-decoration: none; font-weight: bold; font-size: 14px; }
+        .card { background: white; padding: 24px; border-radius: 12px; box-shadow: 0 2px 12px rgba(0,0,0,0.06); margin-bottom: 20px; }
+        .card h2 { color: #333; font-size: 18px; margin-bottom: 16px; padding-bottom: 12px; border-bottom: 2px solid #f0f0f0; }
+        .row { display: flex; justify-content: space-between; padding: 10px 0; }
+        .row .label { color: #666; }
+        .row .valor { font-weight: bold; color: #333; }
+        input[type="number"], input[type="text"] { width: 100%; padding: 14px; font-size: 16px; border: 2px solid #e0e0e0; border-radius: 10px; margin-bottom: 12px; }
+        input:focus { outline: none; border-color: #0070c0; }
+        button { padding: 14px 24px; font-size: 16px; font-weight: bold; border: none; border-radius: 10px; cursor: pointer; color: white; width: 100%; }
+        .btn-primary { background: #0070c0; }
+        .btn-primary:hover { background: #005a9e; }
+        .btn-success { background: #2e7d32; }
+        .btn-success:hover { background: #1b5e20; }
+        .btn-secondary { background: #666; }
+        .notif { padding: 14px; border-radius: 10px; margin-bottom: 12px; font-weight: bold; display: none; }
+        .notif.ok { background: #c8e6c9; color: #1b5e20; display: block; }
+        .notif.error { background: #ffcdd2; color: #b71c1c; display: block; }
+        .notif.info { background: #bbdefb; color: #0d47a1; display: block; }
+        .info-banner { background: #e3f2fd; padding: 16px; border-radius: 10px; color: #0d47a1; margin-bottom: 16px; font-size: 14px; border-left: 4px solid #1976d2; }
+        .link-admin { display: inline-block; margin-bottom: 16px; color: #0070c0; text-decoration: none; font-weight: bold; font-size: 14px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="top">
+            <div>
+                <h1>💰 Caja del día</h1>
+                <span class="badge-tienda" id="badge-tienda">Cargando...</span>
+            </div>
+            <a href="/logout" class="logout">Cerrar sesión</a>
+        </div>
+
+        <a href="/" class="link-admin">← Volver</a>
+
+        <div id="notif" class="notif"></div>
+
+        <div id="panel-abrir" class="card" style="display:none;">
+            <h2>Abrir caja</h2>
+            <p style="color:#666; margin-bottom:16px;">Ingresa el efectivo inicial para dar vuelto.</p>
+            <input type="number" id="efectivo_inicial" placeholder="Efectivo inicial (S/)" step="0.01" min="0">
+            <button class="btn-primary" onclick="abrirCaja()">Abrir caja</button>
+        </div>
+
+        <div id="panel-caja" style="display:none;">
+            <div class="card">
+                <h2>Estado de caja</h2>
+                <div class="row"><span class="label">Efectivo inicial</span><span class="valor" id="ef_inicial">S/ 0.00</span></div>
+                <div class="row"><span class="label">Gastos registrados</span><span class="valor" id="gastos">S/ 0.00</span></div>
+            </div>
+
+            <div class="card" id="card-gasto">
+                <h2>Registrar gasto</h2>
+                <input type="text" id="motivo_gasto" placeholder="Motivo del gasto">
+                <input type="number" id="monto_gasto" placeholder="Monto (S/)" step="0.01" min="0">
+                <button class="btn-secondary" onclick="registrarGasto()">Registrar gasto</button>
+            </div>
+
+            <div class="card" id="card-conteo">
+                <h2>Cierre del día</h2>
+                <div class="info-banner">
+                    ℹ️ Cuenta el efectivo físico y escríbelo aquí. El administrador verificará tu conteo.
+                </div>
+                <input type="number" id="efectivo_contado" placeholder="Efectivo contado (S/)" step="0.01" min="0">
+                <input type="text" id="observaciones" placeholder="Observaciones (opcional)">
+                <button class="btn-success" onclick="registrarConteo()">Enviar mi conteo</button>
+            </div>
+
+            <div class="card" id="card-cerrado" style="display:none;">
+                <h2>✅ Conteo enviado</h2>
+                <p style="color:#666;">Tu conteo fue enviado al administrador. Quedará pendiente de verificación.</p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function notificar(msg, tipo) {
+            const n = document.getElementById('notif');
+            n.textContent = msg;
+            n.className = 'notif ' + tipo;
+            setTimeout(() => { n.className = 'notif'; }, 5000);
+        }
+
+        fetch('/api/mis-datos').then(r => r.json()).then(d => {
+            document.getElementById('badge-tienda').textContent = d.tienda_nombre || 'Tienda';
+        });
+
+        function cargarEstado() {
+            fetch('/api/caja/estado').then(r => r.json()).then(data => {
+                if (!data.abierta) {
+                    document.getElementById('panel-abrir').style.display = 'block';
+                    document.getElementById('panel-caja').style.display = 'none';
+                    return;
+                }
+                document.getElementById('panel-abrir').style.display = 'none';
+                document.getElementById('panel-caja').style.display = 'block';
+
+                document.getElementById('ef_inicial').textContent = 'S/ ' + (data.efectivo_inicial || 0).toFixed(2);
+                document.getElementById('gastos').textContent = 'S/ ' + (data.gastos || 0).toFixed(2);
+
+                if (data.conteo_registrado) {
+                    document.getElementById('card-gasto').style.display = 'none';
+                    document.getElementById('card-conteo').style.display = 'none';
+                    document.getElementById('card-cerrado').style.display = 'block';
+                } else {
+                    document.getElementById('card-gasto').style.display = 'block';
+                    document.getElementById('card-conteo').style.display = 'block';
+                    document.getElementById('card-cerrado').style.display = 'none';
+                }
+            });
+        }
+
+        function abrirCaja() {
+            const monto = parseFloat(document.getElementById('efectivo_inicial').value);
+            if (isNaN(monto) || monto < 0) return notificar('Ingresa un monto válido', 'error');
+            fetch('/api/caja/abrir', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ efectivo_inicial: monto })
+            }).then(r => r.json()).then(data => {
+                if (data.error) return notificar(data.error, 'error');
+                notificar('Caja abierta', 'ok');
+                cargarEstado();
+            });
+        }
+
+        function registrarGasto() {
+            const monto = parseFloat(document.getElementById('monto_gasto').value);
+            const motivo = document.getElementById('motivo_gasto').value;
+            if (isNaN(monto) || monto <= 0) return notificar('Monto inválido', 'error');
+            fetch('/api/caja/gasto', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ monto, motivo })
+            }).then(r => r.json()).then(data => {
+                if (data.error) return notificar(data.error, 'error');
+                notificar('Gasto registrado', 'ok');
+                document.getElementById('monto_gasto').value = '';
+                document.getElementById('motivo_gasto').value = '';
+                cargarEstado();
+            });
+        }
+
+        function registrarConteo() {
+            const contado = parseFloat(document.getElementById('efectivo_contado').value);
+            if (isNaN(contado) || contado < 0) return notificar('Ingresa el efectivo contado', 'error');
+            if (!confirm('¿Confirmas que este es el efectivo físico que hay en caja?')) return;
+
+            const obs = document.getElementById('observaciones').value;
+            fetch('/api/caja/registrar-conteo', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ efectivo_contado: contado, observaciones: obs })
+            }).then(r => r.json()).then(data => {
+                if (data.error) return notificar(data.error, 'error');
+                notificar(data.mensaje, 'info');
+                cargarEstado();
+            });
+        }
+
+        cargarEstado();
+        setInterval(cargarEstado, 15000);
+    </script>
+</body>
+</html>

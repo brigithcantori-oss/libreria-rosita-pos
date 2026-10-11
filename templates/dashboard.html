@@ -1,0 +1,191 @@
+}<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Panel Admin - Librería Rosita</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Segoe UI', Arial, sans-serif; }
+        body { background: #f0f2f5; padding: 20px; }
+        .container { max-width: 1200px; margin: 0 auto; }
+        .top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; flex-wrap: wrap; gap: 12px; }
+        h1 { color: #333; font-size: 26px; }
+        .fecha { color: #888; font-size: 14px; }
+        .menu { display: flex; gap: 10px; margin-bottom: 24px; flex-wrap: wrap; }
+        .menu a { padding: 12px 20px; border-radius: 10px; text-decoration: none; font-weight: bold; color: white; font-size: 14px; position: relative; }
+        .menu a.azul { background: #0070c0; }
+        .menu a.verde { background: #2e7d32; }
+        .menu a.morado { background: #8e44ad; }
+        .menu a.naranja { background: #f57c00; }
+        .badge-count { background: #d32f2f; color: white; border-radius: 50%; padding: 2px 8px; font-size: 12px; margin-left: 6px; }
+        .card { background: white; padding: 24px; border-radius: 14px; box-shadow: 0 2px 12px rgba(0,0,0,0.06); margin-bottom: 20px; }
+        .card h2 { color: #333; font-size: 18px; margin-bottom: 20px; }
+        .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; }
+        .stat { padding: 20px; border-radius: 12px; background: #f8f9fa; border-left: 5px solid #0070c0; }
+        .stat .label { color: #666; font-size: 13px; margin-bottom: 8px; }
+        .stat .value { font-size: 26px; font-weight: bold; color: #333; }
+        .stat.verde { border-left-color: #2e7d32; }
+        .stat.rojo { border-left-color: #d32f2f; background: #ffebee; }
+        .stat.morado { border-left-color: #8e44ad; }
+        .stat.naranja { border-left-color: #f57c00; }
+        .alerta { padding: 14px 16px; border-radius: 10px; margin-bottom: 10px; font-size: 14px; border-left: 4px solid; }
+        .alerta.ok { background: #e8f5e9; color: #1b5e20; border-color: #2e7d32; }
+        .alerta.warn { background: #fff8e1; color: #856404; border-color: #ffc107; }
+        .alerta.peligro { background: #ffebee; color: #b71c1c; border-color: #d32f2f; }
+        .tabla { width: 100%; border-collapse: collapse; margin-top: 8px; }
+        .tabla th, .tabla td { padding: 12px; text-align: left; border-bottom: 1px solid #f0f0f0; font-size: 14px; }
+        .tabla th { color: #666; font-weight: 600; background: #fafafa; }
+        .pill { display: inline-block; padding: 4px 10px; border-radius: 20px; font-size: 12px; font-weight: bold; }
+        .pill.efectivo { background: #c8e6c9; color: #1b5e20; }
+        .pill.yape, .pill.plin { background: #e1bee7; color: #4a148c; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="top">
+            <div>
+                <h1>📊 Panel de Administración</h1>
+                <p class="fecha" id="fecha"></p>
+            </div>
+            <a href="/logout" style="color:#d32f2f; text-decoration:none; font-weight:bold;">Cerrar sesión</a>
+        </div>
+
+        <div class="menu">
+            <a href="/ventas" class="azul">🛒 Registrar ventas</a>
+            <a href="/caja" class="verde">💰 Mi caja</a>
+            <a href="/inventario" class="morado">📦 Inventario</a>
+            <a href="/admin/verificar" class="naranja">🔍 Verificar cierres <span class="badge-count" id="badge-pendientes" style="display:none;">0</span></a>
+        </div>
+
+        <div class="card">
+            <h2>Resumen de hoy (ambas tiendas)</h2>
+            <div class="grid">
+                <div class="stat azul"><div class="label">Total ventas</div><div class="value" id="total_ventas">S/ 0.00</div></div>
+                <div class="stat verde"><div class="label">Efectivo</div><div class="value" id="efectivo">S/ 0.00</div></div>
+                <div class="stat morado"><div class="label">Yape/Plin</div><div class="value" id="yape">S/ 0.00</div></div>
+                <div class="stat"><div class="label">Nº ventas</div><div class="value" id="num_ventas">0</div></div>
+                <div class="stat"><div class="label">Productos vendidos</div><div class="value" id="productos_vendidos">0</div></div>
+            </div>
+        </div>
+
+        <div class="card">
+            <h2>🏪 Cajas del día por tienda</h2>
+            <div id="cajas-tiendas"></div>
+        </div>
+
+        <div class="card">
+            <h2>🔔 Alertas</h2>
+            <div id="alertas"></div>
+        </div>
+
+        <div class="grid" style="grid-template-columns: 1fr 1fr;">
+            <div class="card">
+                <h2>🏆 Top productos de hoy</h2>
+                <div id="top_productos"><p style="color:#888;">Sin ventas aún</p></div>
+            </div>
+            <div class="card">
+                <h2>📦 Stock bajo</h2>
+                <div id="stock_bajo"><p style="color:#888;">Todo en orden</p></div>
+            </div>
+        </div>
+
+        <div class="card">
+            <h2>🧾 Últimas ventas del día</h2>
+            <table class="tabla">
+                <thead><tr><th>Hora</th><th>Tienda</th><th>Usuario</th><th>Método</th><th>Total</th></tr></thead>
+                <tbody id="ventas_recientes"></tbody>
+            </table>
+        </div>
+    </div>
+
+    <script>
+        function cargarDashboard() {
+            fetch('/api/dashboard').then(r => r.json()).then(data => {
+                if (data.error) return console.error(data.error);
+
+                document.getElementById('fecha').textContent = 'Fecha: ' + data.fecha;
+                document.getElementById('total_ventas').textContent = 'S/ ' + data.total_ventas.toFixed(2);
+                document.getElementById('efectivo').textContent = 'S/ ' + data.efectivo.toFixed(2);
+                document.getElementById('yape').textContent = 'S/ ' + data.yape_plin.toFixed(2);
+                document.getElementById('num_ventas').textContent = data.num_ventas;
+                document.getElementById('productos_vendidos').textContent = data.productos_vendidos;
+
+                const badge = document.getElementById('badge-pendientes');
+                if (data.cierres_pendientes > 0) {
+                    badge.textContent = data.cierres_pendientes;
+                    badge.style.display = 'inline-block';
+                } else {
+                    badge.style.display = 'none';
+                }
+
+                const cont = document.getElementById('cajas-tiendas');
+                if (data.cajas && data.cajas.length) {
+                    cont.innerHTML = data.cajas.map(c => {
+                        let estadoTxt = '', color = '#666';
+                        if (c.estado_cierre === 'abierta') { estadoTxt = '🔓 Abierta'; color = '#f57c00'; }
+                        else if (c.estado_cierre === 'pendiente_verificacion') { estadoTxt = '⏳ Pendiente de verificar'; color = '#f57c00'; }
+                        else if (c.estado_cierre === 'verificada') { estadoTxt = '✅ Verificada'; color = '#2e7d32'; }
+                        else if (c.estado_cierre === 'con_diferencia') { estadoTxt = '🚨 Con diferencia'; color = '#d32f2f'; }
+
+                        return '<div style="padding: 14px; background:#fafafa; border-radius:10px; margin-bottom:10px; display:flex; justify-content:space-between; align-items:center;">' +
+                            '<div><b>' + (c.tiendas?.nombre || 'Tienda') + '</b><br><span style="color:#666; font-size:13px;">Inicial: S/ ' + (c.efectivo_inicial || 0).toFixed(2) + '</span></div>' +
+                            '<div style="text-align:right;"><b style="color:' + color + ';">' + estadoTxt + '</b>' +
+                            (c.conteo_vendedora ? '<br><span style="font-size:12px; color:#666;">Vendedora contó: S/ ' + c.conteo_vendedora.toFixed(2) + '</span>' : '') +
+                            (c.conteo_admin ? '<br><span style="font-size:12px; color:#666;">Admin contó: S/ ' + c.conteo_admin.toFixed(2) + '</span>' : '') +
+                            '</div></div>';
+                    }).join('');
+                } else {
+                    cont.innerHTML = '<p style="color:#888;">Sin cajas abiertas hoy</p>';
+                }
+
+                const alertas = [];
+                if (data.cierres_pendientes > 0) {
+                    alertas.push({ t: 'warn', m: '⏳ Tienes ' + data.cierres_pendientes + ' cierre(s) pendiente(s) de verificar.' });
+                }
+                data.cajas.forEach(c => {
+                    if (c.estado_cierre === 'con_diferencia') {
+                        alertas.push({ t: 'peligro', m: '🚨 Diferencia en ' + (c.tiendas?.nombre || 'tienda') + ': S/ ' + (c.diferencia_admin || c.diferencia_vendedora || 0).toFixed(2) });
+                    }
+                });
+                data.stock_bajo.forEach(p => alertas.push({ t: 'warn', m: '📦 Stock bajo: ' + p.nombre + ' (' + p.stock + ' und.)' }));
+
+                document.getElementById('alertas').innerHTML = alertas.length
+                    ? alertas.map(a => '<div class="alerta ' + a.t + '">' + a.m + '</div>').join('')
+                    : '<div class="alerta ok">Todo en orden</div>';
+
+                const top = document.getElementById('top_productos');
+                if (data.top_productos && data.top_productos.length) {
+                    top.innerHTML = data.top_productos.map((p, i) =>
+                        '<div style="display:flex; justify-content:space-between; padding:10px 0; border-bottom:1px solid #f0f0f0;">' +
+                        '<span><b>#' + (i + 1) + '</b> ' + p[0] + '</span><b>' + p[1] + ' und.</b></div>'
+                    ).join('');
+                } else {
+                    top.innerHTML = '<p style="color:#888;">Sin ventas aún</p>';
+                }
+
+                const sb = document.getElementById('stock_bajo');
+                if (data.stock_bajo && data.stock_bajo.length) {
+                    sb.innerHTML = data.stock_bajo.map(p => '<div class="alerta warn">' + p.nombre + ': ' + p.stock + ' und.</div>').join('');
+                } else {
+                    sb.innerHTML = '<p style="color:#888;">Todo en orden</p>';
+                }
+
+                const vr = document.getElementById('ventas_recientes');
+                if (data.ventas_recientes && data.ventas_recientes.length) {
+                    vr.innerHTML = data.ventas_recientes.map(v => {
+                        const hora = new Date(v.fecha).toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit' });
+                        return '<tr><td>' + hora + '</td><td>' + (v.tiendas?.nombre || '—') + '</td><td>' + (v.usuario || '—') + '</td>' +
+                            '<td><span class="pill ' + v.metodo_pago + '">' + v.metodo_pago + '</span></td>' +
+                            '<td><b>S/ ' + v.total.toFixed(2) + '</b></td></tr>';
+                    }).join('');
+                } else {
+                    vr.innerHTML = '<tr><td colspan="5" style="text-align:center; color:#888;">Sin ventas aún</td></tr>';
+                }
+            });
+        }
+
+        cargarDashboard();
+        setInterval(cargarDashboard, 15000);
+    </script>
+</body>
+</html>

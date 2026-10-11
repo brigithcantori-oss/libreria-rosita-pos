@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ventas - Librería Rosita</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Segoe UI', Arial, sans-serif; }
+        body { display: flex; flex-direction: column; height: 100vh; background: #f0f2f5; }
+
+        .topbar { background: #2c3e50; color: white; padding: 12px 20px; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 2px 8px rgba(0,0,0,0.15); }
+        .topbar .titulo { font-size: 18px; font-weight: bold; display: flex; align-items: center; gap: 12px; }
+        .topbar .badge-tienda { background: #0070c0; padding: 4px 12px; border-radius: 20px; font-size: 12px; font-weight: normal; }
+        .topbar .nav { display: flex; gap: 8px; align-items: center; }
+        .topbar .nav a { color: white; text-decoration: none; padding: 8px 14px; border-radius: 6px; font-size: 14px; font-weight: 600; }
+        .topbar .nav a:hover { opacity: 0.9; }
+        .topbar .nav a.inicio { background: #0070c0; }
+        .topbar .nav a.caja { background: #2e7d32; }
+        .topbar .nav a.salir { background: #c62828; }
+
+        .contenido { flex: 1; display: flex; overflow: hidden; }
+
+        .productos-panel { flex: 1; padding: 16px; overflow-y: auto; background: white; }
+        .buscar { width: 100%; padding: 12px; font-size: 16px; border: 2px solid #ddd; border-radius: 8px; margin-bottom: 16px; }
+        .buscar:focus { outline: none; border-color: #0070c0; }
+        .categorias { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; }
+        .cat-btn { padding: 10px 16px; background: #e0e0e0; border: none; border-radius: 6px; font-weight: bold; cursor: pointer; font-size: 14px; }
+        .cat-btn:hover { background: #ccc; }
+        .grid-productos { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 10px; }
+        .producto { padding: 14px; background: #f9f9f9; border: 2px solid #eee; border-radius: 8px; cursor: pointer; text-align: center; transition: all 0.15s; }
+        .producto:hover { background: #eef7ff; border-color: #4a9eff; transform: translateY(-2px); }
+        .producto .nombre { font-weight: bold; margin-bottom: 6px; font-size: 14px; }
+        .producto .precio { color: #0070c0; font-size: 18px; font-weight: bold; }
+        .producto .stock { color: #888; font-size: 12px; margin-top: 4px; }
+
+        .carrito-panel { width: 400px; background: #fff; border-left: 2px solid #ddd; display: flex; flex-direction: column; }
+        .carrito-header { padding: 16px; background: #34495e; color: white; }
+        .carrito-header h2 { font-size: 18px; }
+        .carrito-items { flex: 1; overflow-y: auto; padding: 16px; }
+        .item { display: flex; justify-content: space-between; align-items: center; padding: 12px 0; border-bottom: 1px solid #eee; gap: 8px; }
+        .item-info { flex: 1; min-width: 0; }
+        .item-info .nombre { font-weight: bold; font-size: 14px; }
+        .item-info .detalle { font-size: 12px; color: #666; }
+        .item-controles { display: flex; align-items: center; gap: 4px; }
+        .item-controles button { width: 28px; height: 28px; border: none; border-radius: 6px; background: #0070c0; color: white; font-weight: bold; cursor: pointer; font-size: 14px; }
+        .item-controles button.quitar { background: #d32f2f; }
+        .item-controles span { min-width: 24px; text-align: center; font-weight: bold; }
+        .item-subtotal { font-weight: bold; min-width: 70px; text-align: right; font-size: 14px; }
+
+        .carrito-footer { padding: 16px; border-top: 2px solid #ddd; background: #fafafa; }
+        .total { font-size: 26px; font-weight: bold; margin-bottom: 16px; text-align: right; color: #2c3e50; }
+        .pago-btns { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+        .pago-btns button { padding: 16px; font-size: 15px; font-weight: bold; border: none; border-radius: 8px; color: white; cursor: pointer; }
+        .btn-efectivo { background: #2e7d32; }
+        .btn-efectivo:hover { background: #1b5e20; }
+        .btn-yape { background: #8e44ad; }
+        .btn-yape:hover { background: #6a1b9a; }
+        .btn-cancelar { grid-column: span 2; background: #666; padding: 10px; }
+        .btn-cancelar:hover { background: #444; }
+
+        .vacio { text-align: center; color: #999; padding: 40px 20px; }
+
+        #notificacion { position: fixed; top: 70px; right: 20px; padding: 16px 24px; border-radius: 8px; color: white; font-weight: bold; display: none; z-index: 1000; box-shadow: 0 4px 12px rgba(0,0,0,0.2); }
+        #notificacion.ok { background: #2e7d32; }
+        #notificacion.error { background: #d32f2f; }
+    </style>
+</head>
+<body>
+    <div class="topbar">
+        <div class="titulo">
+            📚 Librería Rosita
+            <span class="badge-tienda" id="badge-tienda">Cargando...</span>
+        </div>
+        <div class="nav">
+            <a href="/" class="inicio" id="btn-inicio">🏠 Inicio</a>
+            <a href="/caja" class="caja">💰 Caja</a>
+            <a href="/logout" class="salir">Salir</a>
+        </div>
+    </div>
+
+    <div class="contenido">
+        <div class="productos-panel">
+            <input type="text" class="buscar" id="buscar" placeholder="🔍 Buscar producto o código..." oninput="filtrarProductos()">
+            <div class="categorias" id="categorias"></div>
+            <div class="grid-productos" id="grid"></div>
+        </div>
+
+        <div class="carrito-panel">
+            <div class="carrito-header">
+                <h2>🛒 Carrito</h2>
+            </div>
+            <div class="carrito-items" id="carrito">
+                <div class="vacio">Sin productos.<br>Toca uno para agregarlo.</div>
+            </div>
+            <div class="carrito-footer">
+                <div class="total">Total: S/ <span id="total">0.00</span></div>
+                <div class="pago-btns">
+                    <button class="btn-efectivo" onclick="cobrar('efectivo')">💰 EFECTIVO</button>
+                    <button class="btn-yape" onclick="cobrar('yape')">📱 YAPE</button>
+                    <button class="btn-cancelar" onclick="limpiarCarrito()">Cancelar venta</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="notificacion"></div>
+
+    <script>
+        let productos = [];
+        let carrito = [];
+        let categoriaActual = 'Todas';
+
+        fetch('/api/mis-datos').then(r => r.json()).then(d => {
+            document.getElementById('badge-tienda').textContent = d.tienda_nombre || 'Tienda';
+            // Ocultar botón Inicio si es vendedora
+            if (d.rol !== 'admin') {
+                document.getElementById('btn-inicio').style.display = 'none';
+            }
+        });
+
+        function cargarProductos() {
+            fetch('/api/productos')
+                .then(res => res.json())
+                .then(data => {
+                    if (data.error) {
+                        mostrarNotificacion('Error al cargar productos: ' + data.error, 'error');
+                        return;
+                    }
+                    productos = data;
+                    renderizarCategorias();
+                    renderizarProductos();
+                });
+        }
+
+        function renderizarCategorias() {
+            const cats = ['Todas', ...new Set(productos.map(p => p.categoria).filter(Boolean))];
+            const cont = document.getElementById('categorias');
+            cont.innerHTML = cats.map(c =>
+                '<button class="cat-btn" onclick="setCategoria(\'' + c + '\')">' + c + '</button>'
+            ).join('');
+        }
+
+        function setCategoria(cat) {
+            categoriaActual = cat;
+            renderizarProductos();
+        }
+
+        function filtrarProductos() { renderizarProductos(); }
+
+        function renderizarProductos() {
+            const filtro = document.getElementById('buscar').value.toLowerCase();
+            const grid = document.getElementById('grid');
+            const filtrados = productos.filter(p => {
+                const t = p.nombre.toLowerCase().includes(filtro) || (p.codigo && p.codigo.toLowerCase().includes(filtro));
+                const c = categoriaActual === 'Todas' || p.categoria === categoriaActual;
+                return t && c;
+            });
+
+            if (filtrados.length === 0) {
+                grid.innerHTML = '<div class="vacio">No hay productos en esta tienda.</div>';
+                return;
+            }
+
+            grid.innerHTML = filtrados.map(p => {
+                const stock = p.stock || 0;
+                return '<div class="producto" onclick="agregarAlCarrito(' + p.id + ')">' +
+                    '<div class="nombre">' + p.nombre + '</div>' +
+                    '<div class="precio">S/ ' + parseFloat(p.precio).toFixed(2) + '</div>' +
+                    '<div class="stock">Stock: ' + stock + '</div>' +
+                    '</div>';
+            }).join('');
+        }
+
+        function agregarAlCarrito(id) {
+            const prod = productos.find(p => p.id === id);
+            if (!prod) return;
+            if (prod.stock <= 0) { mostrarNotificacion('Sin stock', 'error'); return; }
+            const item = carrito.find(i => i.id === id);
+            if (item) {
+                if (item.cantidad >= prod.stock) { mostrarNotificacion('No hay más stock', 'error'); return; }
+                item.cantidad++;
+            } else {
+                carrito.push({ id: prod.id, nombre: prod.nombre, precio: parseFloat(prod.precio), cantidad: 1 });
+            }
+            renderizarCarrito();
+        }
+
+        function cambiarCantidad(id, delta) {
+            const item = carrito.find(i => i.id === id);
+            if (!item) return;
+            const prod = productos.find(p => p.id === id);
+            item.cantidad += delta;
+            if (item.cantidad <= 0) carrito = carrito.filter(i => i.id !== id);
+            else if (item.cantidad > prod.stock) { item.cantidad = prod.stock; mostrarNotificacion('Stock máximo', 'error'); }
+            renderizarCarrito();
+        }
+
+        function renderizarCarrito() {
+            const cont = document.getElementById('carrito');
+            if (carrito.length === 0) {
+                cont.innerHTML = '<div class="vacio">Sin productos.<br>Toca uno para agregarlo.</div>';
+                document.getElementById('total').textContent = '0.00';
+                return;
+            }
+            let total = 0;
+            cont.innerHTML = carrito.map(item => {
+                const sub = item.precio * item.cantidad;
+                total += sub;
+                return '<div class="item">' +
+                    '<div class="item-info"><div class="nombre">' + item.nombre + '</div><div class="detalle">S/ ' + item.precio.toFixed(2) + ' c/u</div></div>' +
+                    '<div class="item-controles">' +
+                    '<button onclick="cambiarCantidad(' + item.id + ', -1)">−</button>' +
+                    '<span>' + item.cantidad + '</span>' +
+                    '<button onclick="cambiarCantidad(' + item.id + ', 1)">+</button>' +
+                    '<button class="quitar" onclick="cambiarCantidad(' + item.id + ', -' + item.cantidad + ')">×</button>' +
+                    '</div>' +
+                    '<div class="item-subtotal">S/ ' + sub.toFixed(2) + '</div>' +
+                    '</div>';
+            }).join('');
+            document.getElementById('total').textContent = total.toFixed(2);
+        }
+
+        function limpiarCarrito() { carrito = []; renderizarCarrito(); }
+
+        function mostrarNotificacion(msg, tipo) {
+            const n = document.getElementById('notificacion');
+            n.textContent = msg;
+            n.className = tipo;
+            n.style.display = 'block';
+            setTimeout(() => { n.style.display = 'none'; }, 3000);
+        }
+
+        function cobrar(metodo) {
+            if (carrito.length === 0) { mostrarNotificacion('Carrito vacío', 'error'); return; }
+            fetch('/api/venta', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    items: carrito.map(i => ({ id: i.id, precio: i.precio, cantidad: i.cantidad })),
+                    metodo_pago: metodo
+                })
+            })
+            .then(res => res.json())
+            .then(data => {
+                if (data.venta_id) {
+                    mostrarNotificacion('✅ Venta #' + data.venta_id + ' registrada', 'ok');
+                    limpiarCarrito();
+                    cargarProductos();
+                } else {
+                    mostrarNotificacion('Error: ' + (data.error || 'desconocido'), 'error');
+                }
+            })
+            .catch(() => mostrarNotificacion('Error de conexión', 'error'));
+        }
+
+        cargarProductos();
+    </script>
+</body>
+</html>
